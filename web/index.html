@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#12151c">
+<title>局域网 RGB 灯</title>
+<style>
+  :root{
+    --bg:#12151c; --card:#1b2029; --line:#2b3240; --fg:#e8edf5; --dim:#8b97ab;
+    --accent:#4ea1ff; --ok:#38c172; --bad:#e5534b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.5 -apple-system,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+    padding:10px 10px 30px;max-width:640px;margin:0 auto;
+  }
+  header{display:flex;align-items:center;gap:8px;padding:6px 2px 12px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--bad);flex:0 0 auto;transition:.2s}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  #status{flex:1;font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  h3{margin:0 0 10px;font-size:14px;color:var(--dim);font-weight:600;display:flex;align-items:center;gap:8px}
+  h3 span{flex:1}
+  button{
+    background:#2a323f;color:var(--fg);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;font-size:15px;font-family:inherit;cursor:pointer;
+    min-height:44px;
+  }
+  button:active{transform:scale(.98)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#06121f;font-weight:600}
+  button.mini{padding:6px 10px;min-height:34px;font-size:13px}
+  .row{display:flex;gap:8px}
+  .row>input{flex:1;min-width:0}
+  input[type=text],input[type=number]{
+    background:#0e1117;color:var(--fg);border:1px solid var(--line);border-radius:10px;
+    padding:11px 12px;font-size:15px;font-family:ui-monospace,Consolas,monospace;min-height:44px;width:100%;
+  }
+  #preview{height:64px;border-radius:10px;background:#000;border:1px solid var(--line);margin-bottom:10px}
+  .slider{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .slider b{width:18px;text-align:center;font-size:13px;color:var(--dim)}
+  .slider output{width:42px;text-align:right;font-family:ui-monospace,Consolas,monospace;font-size:13px;color:var(--dim)}
+  input[type=range]{flex:1;accent-color:var(--accent);height:30px}
+  #cmdtext{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--dim);
+    word-break:break-all;padding:6px 2px 2px}
+  .presets{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid button{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;width:100%}
+  .grid.editing button{border-color:var(--accent);border-style:dashed}
+  #addBtn{margin-top:8px;width:100%}
+  pre{
+    margin:0;max-height:190px;overflow:auto;font-size:12px;line-height:1.55;
+    font-family:ui-monospace,Consolas,monospace;color:#a9b6c9;white-space:pre-wrap;word-break:break-all;
+  }
+  .hint{color:var(--dim);font-size:12px;margin-top:6px}
+  .banner{background:#3a2a12;border:1px solid #6b4a1c;color:#ffcf8b;border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px}
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:16px;z-index:9}
+  #modal.show{display:flex}
+  #modal .card{width:100%;max-width:420px;margin:0}
+  label.f{display:block;font-size:13px;color:var(--dim);margin:10px 0 6px}
+</style>
+</head>
+<body>
+
+<div id="offline" class="banner" style="display:none">
+  这个页面需要桥接程序才能工作：请在电脑上运行 <code>python bridge.py</code>，再用打印出来的地址打开本页。
+</div>
+
+<div id="warn" class="banner" style="display:none"></div>
+
+<header>
+  <i id="dot" class="dot"></i>
+  <div id="status">未连接</div>
+  <button id="autoBtn" class="mini">自动查找</button>
+</header>
+
+<section class="card">
+  <div class="row">
+    <input id="host" type="text" value="192.168.4.1" inputmode="decimal" style="flex:2">
+    <input id="port" type="number" value="2001" inputmode="numeric" style="flex:1">
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button id="connBtn" class="primary" style="flex:1">连接</button>
+    <button id="discBtn" style="flex:1">断开</button>
+  </div>
+</section>
+
+<section class="card">
+  <h3><span>颜色</span><button class="mini" id="resend">重发</button></h3>
+  <div id="preview"></div>
+  <div class="slider"><b>R</b><input type="range" id="r" max="255" value="0"><output id="rv">0</output></div>
+  <div class="slider"><b>G</b><input type="range" id="g" max="255" value="0"><output id="gv">0</output></div>
+  <div class="slider"><b>B</b><input type="range" id="b" max="255" value="0"><output id="bv">0</output></div>
+  <div id="cmdtext"></div>
+  <div class="presets">
+    <button data-c="255,0,0">红</button>
+    <button data-c="0,255,0">绿</button>
+    <button data-c="0,0,255">蓝</button>
+    <button data-c="255,255,255">白</button>
+    <button data-c="0,0,0">灭</button>
+  </div>
+</section>
+
+<section class="card">
+  <h3><span>自定义按钮</span><button class="mini" id="editToggle">编辑</button></h3>
+  <div id="quick" class="grid"></div>
+  <button id="addBtn" class="mini">＋ 新增按钮</button>
+  <div class="hint">点【编辑】后，点按钮可以改名/改内容/删除；内容存在本机浏览器里。</div>
+</section>
+
+<section class="card">
+  <h3><span>任意命令</span></h3>
+  <input id="raw" type="text" value="$RGB-R255-G125-B000^">
+  <button id="sendBtn" class="primary" style="width:100%;margin-top:8px">发送</button>
+</section>
+
+<section class="card">
+  <h3><span>日志（← 是模块回传的字节）</span></h3>
+  <pre id="log">（还没有数据）</pre>
+</section>
+
+<div id="modal">
+  <div class="card">
+    <h3><span id="modalTitle">新增按钮</span></h3>
+    <label class="f">按钮名称</label>
+    <input id="mName" type="text" placeholder="例如 鸣笛 / 温湿度">
+    <label class="f">发送内容</label>
+    <input id="mCmd" type="text" placeholder="$BEEP-1^">
+    <div class="row" style="margin-top:12px">
+      <button id="mSave" class="primary" style="flex:1">保存</button>
+      <button id="mDel" style="flex:1;display:none">删除</button>
+      <button id="mCancel" style="flex:1">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = "rgbQuickButtons";
+  var editMode = false;
+  var editIndex = null;
+  var lastSent = "";
+
+  var defaults = [
+    { l: "实验1 LED",   c: "$LED-S11-S21-S30-L1100-L2050-L3000^" },
+    { l: "实验2 鸣笛",  c: "$BEEP-1^" },
+    { l: "实验3 温湿度", c: "$TH-1^" },
+    { l: "实验4 闹钟",  c: "$CLK-0-2017-11-10-15-23-20-5^" },
+    { l: "实验5 超声波", c: "$UTL-XXX-123-X^" },
+    { l: "继电器 开",   c: "$RELAY-1^" },
+    { l: "继电器 关",   c: "$RELAY-0^" },
+    { l: "舵机 90°",    c: "$SERVO-90^" }
+  ];
+
+  if (location.protocol === "file:") {
+    $("offline").style.display = "block";
+  }
+
+  // ---------------- 与桥接程序通信
+
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: body || ""
+    }).then(function (r) { return r.json(); });
+  }
+
+  function pad3(v) { v = String(v); return v.length >= 3 ? v : ("000" + v).slice(-3); }
+
+  function currentCmd() {
+    return "$RGB-R" + pad3($("r").value) + "-G" + pad3($("g").value) + "-B" + pad3($("b").value) + "^";
+  }
+
+  function send(cmd) {
+    lastSent = cmd;
+    return post("/api/send", cmd).then(function (j) {
+      if (!j.ok) { throw new Error(j.error || "发送失败"); }
+    }).catch(function (e) {
+      appendLocal("✗ " + cmd + "   " + e.message);
+    });
+  }
+
+  var pending = null;
+  function onColorChange() {
+    $("rv").textContent = $("r").value;
+    $("gv").textContent = $("g").value;
+    $("bv").textContent = $("b").value;
+    $("preview").style.background =
+      "rgb(" + $("r").value + "," + $("g").value + "," + $("b").value + ")";
+    var cmd = currentCmd();
+    $("cmdtext").textContent = cmd;
+    clearTimeout(pending);
+    pending = setTimeout(function () { send(cmd); }, 130);
+  }
+
+  ["r", "g", "b"].forEach(function (id) {
+    $(id).addEventListener("input", onColorChange);
+  });
+
+  document.querySelectorAll(".presets button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var p = btn.dataset.c.split(",");
+      $("r").value = p[0]; $("g").value = p[1]; $("b").value = p[2];
+      onColorChange();
+    });
+  });
+
+  $("resend").addEventListener("click", function () { send(currentCmd()); });
+
+  $("sendBtn").addEventListener("click", function () { send($("raw").value); });
+
+  // ---------------- 连接
+
+  $("connBtn").addEventListener("click", function () {
+    var host = $("host").value.trim() || "192.168.4.1";
+    var port = parseInt($("port").value, 10) || 2001;
+    post("/api/connect", JSON.stringify({ host: host, port: port }))
+      .then(function (j) { if (!j.ok) { appendLocal("连接失败"); } refresh(); })
+      .catch(function (e) { appendLocal("连接失败：" + e.message); });
+  });
+
+  $("autoBtn").addEventListener("click", function () {
+    $("status").textContent = "正在自动查找…";
+    post("/api/connect", JSON.stringify({ auto: true }))
+      .then(function (j) {
+        if (j.ok) { $("host").value = j.host; $("port").value = j.port; }
+        else { appendLocal("没找到模块：确认本机已连模块热点"); }
+        refresh();
+      });
+  });
+
+  $("discBtn").addEventListener("click", function () {
+    post("/api/disconnect", "").then(refresh);
+  });
+
+  // ---------------- 状态轮询
+
+  var localLines = [];
+
+  function appendLocal(s) {
+    localLines.push(s);
+    if (localLines.length > 20) { localLines.shift(); }
+    paintLog();
+  }
+
+  var serverLog = [];
+  function paintLog() {
+    var all = serverLog.concat(localLines);
+    $("log").textContent = all.length ? all.join("\n") : "（还没有数据）";
+    $("log").scrollTop = $("log").scrollHeight;
+  }
+
+  function refresh() {
+    fetch("/api/status", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var on = !!j.connected;
+        $("dot").className = "dot" + (on ? " on" : "");
+        var mine = j.myip ? ("　本机 " + j.myip) : "";
+        $("status").textContent = (on ? ("已连接 " + j.host + ":" + j.port) : "未连接") + mine;
+        if (on) { $("host").value = j.host; $("port").value = j.port; }
+        if (on && j.myip && j.host) {
+          var a = j.myip.split(".").slice(0, 3).join(".");
+          var b = j.host.split(".").slice(0, 3).join(".");
+          $("warn").style.display = (a === b) ? "none" : "block";
+          $("warn").textContent = "注意：本机在 " + a + ".x，模块在 " + b +
+            ".x，两者不在同一网段 —— 可能连错 WiFi 了（连到家里的路由器而不是模块热点）";
+        } else {
+          $("warn").style.display = "none";
+        }
+        serverLog = (j.log || []).concat(j.rx || []);
+        paintLog();
+      })
+      .catch(function () {
+        $("dot").className = "dot";
+        $("status").textContent = "桥接程序未运行";
+      });
+  }
+
+  // ---------------- 自定义按钮
+
+  function loadQuick() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) { return defaults.slice(); }
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length ? arr : defaults.slice();
+    } catch (e) { return defaults.slice(); }
+  }
+
+  function saveQuick(arr) {
+    try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) {}
+  }
+
+  var quick = loadQuick();
+
+  function renderQuick() {
+    var box = $("quick");
+    box.className = "grid" + (editMode ? " editing" : "");
+    box.innerHTML = "";
+    quick.forEach(function (item, i) {
+      var b = document.createElement("button");
+      b.textContent = item.l;
+      b.title = item.c;
+      b.addEventListener("click", function () {
+        if (editMode) { openEditor(i); } else { send(item.c); }
+      });
+      box.appendChild(b);
+    });
+  }
+
+  $("editToggle").addEventListener("click", function () {
+    editMode = !editMode;
+    this.textContent = editMode ? "完成" : "编辑";
+    this.className = "mini" + (editMode ? " primary" : "");
+    renderQuick();
+  });
+
+  $("addBtn").addEventListener("click", function () { openEditor(null); });
+
+  function openEditor(i) {
+    editIndex = i;
+    var item = (i === null) ? { l: "", c: $("raw").value } : quick[i];
+    $("modalTitle").textContent = (i === null) ? "新增按钮" : "编辑按钮";
+    $("mName").value = item.l;
+    $("mCmd").value = item.c;
+    $("mDel").style.display = (i === null) ? "none" : "block";
+    $("modal").classList.add("show");
+  }
+
+  function closeEditor() {
+    $("modal").classList.remove("show");
+    editIndex = null;
+  }
+
+  $("mCancel").addEventListener("click", closeEditor);
+
+  $("mSave").addEventListener("click", function () {
+    var cmd = $("mCmd").value.trim();
+    if (!cmd) { $("mCmd").focus(); return; }
+    var name = $("mName").value.trim() || cmd;
+    if (editIndex === null) { quick.push({ l: name, c: cmd }); }
+    else { quick[editIndex] = { l: name, c: cmd }; }
+    saveQuick(quick);
+    renderQuick();
+    closeEditor();
+  });
+
+  $("mDel").addEventListener("click", function () {
+    if (editIndex === null) { return; }
+    quick.splice(editIndex, 1);
+    saveQuick(quick);
+    renderQuick();
+    closeEditor();
+  });
+
+  $("modal").addEventListener("click", function (e) {
+    if (e.target === $("modal")) { closeEditor(); }
+  });
+
+  // ---------------- 启动
+
+  quick.forEach(function (q) { if (!q.l) { q.l = q.c; } });
+  saveQuick(quick);
+  renderQuick();
+  onColorChange();
+  refresh();
+  setInterval(refresh, 1500);
+})();
+</script>
+</body>
+</html>
