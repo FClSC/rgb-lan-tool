@@ -19,6 +19,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -396,6 +397,37 @@ class MainActivity : Activity() {
         statusView.text = t
     }
 
+    /** 一直读模块回传的字节，字节数 / 十六进制 / 文本都打进日志 */
+    private fun startReader(s: Socket, ins: InputStream) {
+        val t = Thread {
+            val buf = ByteArray(256)
+            while (true) {
+                val n = try {
+                    ins.read(buf)
+                } catch (e: Exception) {
+                    -1
+                }
+                if (n <= 0) break
+                if (sock !== s) break
+                val hex = StringBuilder()
+                for (i in 0 until n) {
+                    if (i > 0) hex.append(' ')
+                    hex.append(String.format("%02X", buf[i].toInt() and 0xFF))
+                }
+                val text = String(buf, 0, n, Charsets.UTF_8).trim()
+                ui.post { appendLog("← " + hex + "   [" + text + "]") }
+            }
+            if (sock === s) {
+                ui.post {
+                    setStatus("模块断开了连接")
+                    appendLog("模块断开了连接")
+                }
+            }
+        }
+        t.isDaemon = true
+        t.start()
+    }
+
     private fun appendLog(s: String) {
         logLines.add(s)
         while (logLines.size > 30) logLines.removeAt(0)
@@ -419,6 +451,8 @@ class MainActivity : Activity() {
                 closeQuietly()
                 sock = s
                 out = s.getOutputStream()
+                val ins = s.getInputStream()
+                startReader(s, ins)
                 ui.post {
                     setStatus("已连接 " + host + ":" + port)
                     appendLog("✔ 已连接 " + host + ":" + port)
@@ -447,6 +481,7 @@ class MainActivity : Activity() {
                     closeQuietly()
                     sock = s
                     out = s.getOutputStream()
+                    startReader(s, s.getInputStream())
                     ui.post {
                         hostBox.setText(h)
                         portBox.setText(p.toString())
