@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,14 +21,83 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.7'
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Name debug APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/*.apk)
+          if [[ ${#apks[@]} -ne 1 ]]; then
+            echo "expected exactly one debug APK, found ${#apks[@]}" >&2
+            printf '  %s\n' "${apks[@]}" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
+          fi
+          if [[ -z "${version}" ]]; then
+            echo "could not determine versionName" >&2
+            exit 1
+          fi
+          name="rgb-lan-tool-${version}-debug.apk"
+          out="${RUNNER_TEMP:-/tmp}/${name}"
+          cp "${apks[0]}" "${out}"
+          echo "name=${name}" >> "${GITHUB_OUTPUT}"
+          echo "path=${out}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Prepared ${out}"
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: rgb-lan-tool-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_APK: ${{ steps.apk.outputs.path }}
+          RELEASE_VERSION: ${{ steps.apk.outputs.version }}
+          RELEASE_NAME: ${{ steps.apk.outputs.name }}
+        run: |
+          set -euo pipefail
+          notes="$(mktemp)"
+          cat > "${notes}" <<'EOF'
+          ## 局域网 RGB 灯控制器 __VERSION__
+
+          这个版本同时带上三种用法：
+
+          - **安卓 App**（app/）：手机连上模块热点，TCP 直连模块，拖动滑块控制 RGB 灯，自定义按钮可改可存。
+          - **桌面 Python 工具**（tools/rgb_tool.py）：先扫描模块真实的 IP 和端口，也可以直接发命令或打开图形界面调色。
+          - **网页桥接**（web/bridge.py、web/index.html）：电脑跑一个桥接，手机用浏览器打开就能控制，适合一台电脑带全班。
+
+          ### 安装包
+
+          附件 __APK__ 是 **debug 调试包**（assembleDebug，调试证书签名）。仓库里没有配置正式发布用的密钥库。拷到手机安装时，需要允许「安装未知来源应用」。
+
+          - 标签：__TAG__
+          - 首个发布 v1.1 对应应用内 versionName 1.1、versionCode 2
+          - 只做局域网，不依赖厂商服务器，也不需要外网
+          - 协议不变：包头 $ ，包尾 ^ ，颜色分量为三位数字，例如 $RGB-R255-G125-B000^
+
+          若 Release 页面没有附件，到同一次 Actions 运行底部的 Artifacts 下载 rgb-lan-tool-debug-apk。
+          EOF
+          sed -i \
+            -e "s/__VERSION__/${RELEASE_VERSION}/g" \
+            -e "s/__APK__/${RELEASE_NAME}/g" \
+            -e "s/__TAG__/${RELEASE_TAG}/g" \
+            "${notes}"
+          gh release create "${RELEASE_TAG}" \
+            --title "${RELEASE_TAG}" \
+            --notes-file "${notes}" \
+            "${RELEASE_APK}#${RELEASE_NAME}"
