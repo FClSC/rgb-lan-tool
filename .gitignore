@@ -1,0 +1,46 @@
+# macOS / editor
+.DS_Store
+*.swp
+*~
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+
+# Android / Gradle build outputs.
+# The Gradle Wrapper is tracked on purpose:
+#   gradlew
+#   gradlew.bat
+#   gradle/wrapper/gradle-wrapper.jar
+#   gradle/wrapper/gradle-wrapper.properties
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+*.apk
+*.ap_
+*.aab
+*.dex
+output-metadata.json
+
+# Kotlin
+.kotlin/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Logs
+*.log

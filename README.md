@@ -19,7 +19,8 @@
 | `tools/rgb_tool.py` | **先跑这个**。桌面版，能扫出模块真实的 IP 和端口，也能调色 |
 | `web/bridge.py` + `web/index.html` | **网页版**：桥接程序 + 手机网页界面 |
 | `app/` | 安卓工程源码（Kotlin，零第三方依赖） |
-| `.github/workflows/build-apk.yml` | 在 GitHub 上自动编译出 APK，本机不用装 Android SDK |
+| `.github/workflows/build-apk.yml` | 推送后自动编译 debug APK；推送 `v*` 标签时创建 GitHub Release 并附上 APK |
+| `gradlew`、`gradlew.bat`、`gradle/wrapper/` | Gradle Wrapper 8.7。本机编译用 `./gradlew`，不必单独安装 Gradle |
 | `settings.gradle.kts` / `build.gradle.kts` / `gradle.properties` | Gradle 工程配置 |
 
 ---
@@ -56,25 +57,39 @@ python tools/rgb_tool.py --send 192.168.4.1 2001 "$RGB-R255-G000-B000^"
 
 ## 三、怎么拿到 APK
 
-本机没有 JDK / Android SDK，所以这里只给源码。三种取 APK 的方式，按省事程度排：
+当前应用版本是 **1.1**（versionCode 2）。发布出去的安装包是 **debug 调试包**（调试证书签名，不是应用商店用的正式签名）。安装时需要允许「安装未知来源应用」。
 
-### 方式 1：GitHub Actions（不用装任何开发环境，推荐）
+仓库地址：[https://github.com/FClSC/rgb-lan-tool](https://github.com/FClSC/rgb-lan-tool)。
 
-1. 新建一个 GitHub 仓库，把 **本文件夹的内容**（`app/`、`settings.gradle.kts` 等，注意 `.github` 也要一起）推到仓库根目录；
-2. 推送后自动开始构建，约 3~5 分钟；
-3. 在仓库的 **Actions** 页打开这次运行，页面底部 **Artifacts** 里下载 `rgb-lan-tool-debug-apk`；
-4. 解压得到 `app-debug.apk`，发到手机上安装（需要允许"安装未知来源应用"）。
+### 方式 1：GitHub Release（推荐）
 
-也可以手动触发：Actions → build-apk → Run workflow。
+打开 [Releases](https://github.com/FClSC/rgb-lan-tool/releases)，下载对应版本的 APK。1.1 的文件名是 `rgb-lan-tool-1.1-debug.apk`（名字里的 `debug` 表示调试包）。
 
-### 方式 2：本机装 Android Studio
+推送 `v*` 标签（例如 `v1.1`）时，GitHub Actions 会自动编译并创建 Release，把这个 APK 挂上去。
 
-装好后 `File → Open` 选这个文件夹，等 Gradle 同步完，`Build → Build Bundle(s)/APK(s) → Build APK(s)`，
+### 方式 2：Actions 产物（没有 Release 时再用）
+
+1. 打开仓库的 **Actions**，进入最近一次成功的 `build-apk`；
+2. 页面底部 **Artifacts** 下载 `rgb-lan-tool-debug-apk`；
+3. 解压得到 APK，发到手机上安装。
+
+也可以手动触发：Actions → build-apk → Run workflow。每次 push 也会构建一份 debug APK。
+
+### 方式 3：本机编译
+
+需要 JDK 17 和 Android SDK。在仓库根目录：
+
+```bash
+./gradlew assembleDebug
+```
+
 产物在 `app/build/outputs/apk/debug/app-debug.apk`。
 
-### 方式 3：不装 App，用现成的 TCP 工具
+用 Android Studio 也可以：`File → Open` 打开本文件夹，等 Gradle 同步完，`Build → Build Bundle(s) / APK(s) → Build APK(s)`。
 
-手机上任意"网络调试助手"选 TCP 客户端，连 `扫到的IP:端口`，发 `$RGB-R255-G000-B000^`。
+### 方式 4：不装 App，用现成的 TCP 工具
+
+手机上任意「网络调试助手」选 TCP 客户端，连 `扫到的IP:端口`，发 `$RGB-R255-G000-B000^`。
 功能最少，但足够完成实验。
 
 ---
@@ -107,7 +122,7 @@ python tools/rgb_tool.py --send 192.168.4.1 2001 "$RGB-R255-G000-B000^"
 | 继电器 开 / 关 | `$RELAY-1^` / `$RELAY-0^` |
 | 舵机 90° | `$SERVO-90^` |
 
-完整 20 课协议见 `AR套件物联网微信控制协议V180628 .xlsx`，照抄内容即可。
+完整 20 课协议写在厂商表格《AR套件物联网微信控制协议V180628》里（这份 xlsx **没有**放进本仓库），照抄内容即可。
 
 ---
 
@@ -152,7 +167,7 @@ python tools/rgb_tool.py --send 192.168.4.1 2001 "$RGB-R255-G000-B000^"
 
 - 远程（云端）模式：不做，厂商那台服务器可能已下线（`119.23.109.47:8080` 现在连不上）
 - 其它 19 课的图形化界面：目前用「任意命令」代替，需要的话可以照 `main` 里的 RGB 页再加一个 Activity
-- 未在真机验证：本机没有 SDK，编译在本机无法执行，APK 由 GitHub Actions 产出后再实测
+- 未在真机验证：请从 GitHub Release 下载 debug APK（没有 Release 时用 Actions 产物）装到手机上实测
 ---
 
 ## 九、网页版（不用装 App，课堂推荐）
